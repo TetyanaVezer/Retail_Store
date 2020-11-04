@@ -1,0 +1,321 @@
+import pandas as pd
+import os
+from tabulate import tabulate 
+
+def empty_stock(method):
+  """Decorator function which check whether the stock is empty. Bound to remove_item, modify_items and add_discount methods."""
+  def inner(cls):
+    if Item_handling.df.empty:
+      print('You cannot perform this operation on empty stock.')
+    else:
+      return method(cls)
+  return inner
+
+class Item_handling():
+  """
+  A class used to check and view items in the stock.
+
+  Attributes
+    ----------
+    df : pandas.core.frame.DataFrame
+    data structure of items with contains columns: Product, Quantity, Price
+
+  Methods
+    -------
+    check_item
+    Check if item is in the stock.
+
+    view_items
+    Print all actual items in the stock.
+
+  """
+
+  df = pd.DataFrame(columns=['Product', 'Price','Quantity'])
+  
+  @classmethod
+  def check_item(cls):
+    """Check if item is in the stock."""
+    not_match=[]
+    a=list(map(str.strip, input('Please type items. Use , for separator ').split(',')))
+    for i in a:
+      if i not in Shopkeeper.df['Product'].tolist():
+        not_match.append(i)
+    return a, not_match
+  
+  @classmethod
+  def view_items(cls):
+    """Print all actual items in the stock."""
+    if Item_handling.df.empty:
+      print('Currently the stock is empty.')
+    else:
+      Item_handling.df = Item_handling.df.groupby(['Product','Price'], as_index=False)['Quantity'].sum()
+      print(tabulate(Item_handling.df, headers = 'keys', tablefmt = 'psql'))
+
+class Shopkeeper(Item_handling):
+  """
+  Parent class: Item_handling.
+
+  Operations which shopkeeper can perform with items 
+  accessible in shopkeeper mode.
+
+  Attributes
+    ----------
+    discount_items : list
+    products to which discount is applied
+
+    discount_rate : NoneType, float
+    rate of discount
+    
+
+  Methods
+    -------
+    add_item
+    Add item to the stock.
+
+    remove_item
+    Remove item from the stock.
+
+    modify_items
+    Change name, quantity, price of the selected item.
+
+    add_discount
+    Calculate the price of the discounted item.
+
+    remove_discount
+    Return price before discount.
+
+    shopkeeper_mode
+    Shopkeeper commands manual.
+
+  """
+  discount_items=[]
+  discount_rate=None
+  
+  @classmethod
+  def add_item(cls):
+    """Add item to the stock."""
+    t=[]
+    with open('items.txt') as the_file:
+      for line in the_file:
+        t.append([y.strip() for z,y in enumerate(line.split(',')) if z<3])
+    try:
+      df2 = pd.DataFrame(t, columns=['Product', 'Price','Quantity'])
+      df2['Quantity'] = df2['Quantity'].astype(int)
+      df2['Price'] = df2['Price'].astype(float)
+      Item_handling.df=pd.concat([cls.df,df2])
+      Item_handling.df = Item_handling.df.groupby(['Product','Price'], as_index=False)['Quantity'].sum()
+      print('New items added')
+    except:
+      print('Some data has invalid values. Check please and validate')
+  
+  
+  @classmethod
+  @empty_stock
+  def remove_item(cls):
+    """Remove item from the stock. """
+    a, not_match=Item_handling.check_item()
+    if not_match:
+      print('Please check the input data for items: ', not_match)
+    else:
+      Item_handling.df=Item_handling.df[Item_handling.df['Product'].isin(a)==False]
+      print('Requested items has been removed')
+    
+  
+  @classmethod
+  @empty_stock
+  def modify_items(cls):
+    """Change name, quantity, price of the selected item."""
+    a,not_match=Item_handling.check_item()
+    if not_match:
+      print('Please check the input data for items: ', not_match)
+    else:
+        elements = list(Shopkeeper.df[Shopkeeper.df['Product'].isin(a)==True].index)
+        for i in elements:
+          try:
+            cls.df.at[i,'Price']= input('Type new price for item {}. Current price is {} '.format(*cls.df.loc[[i],'Product'].values, *cls.df.loc[[i],'Price'].values))
+            cls.df.at[i,'Quantity']= input('Type new quantity for item {}. Current quantity is {} '.format(*cls.df.loc[[i],'Product'].values,  *cls.df.loc[[i],'Quantity'].values))
+            cls.df.at[i,'Product']= input('Type new name for item {} '.format(*cls.df.loc[[i],'Product'].values))
+            print('Data modified successfully')
+          except:
+            print('Incorrect value. Please check the input')
+  
+  @classmethod
+  @empty_stock
+  def add_discount(cls):
+    """Calculate the price of the discounted item."""
+    a, not_match=Item_handling.check_item()
+    if not_match:
+      print('Please check the input data for items: ', not_match)
+    else:
+      Shopkeeper.discount_rate=1-float(input('Please type discount rate '))/100
+      Shopkeeper.discount_items=a
+      elements = list(Shopkeeper.df[Shopkeeper.df['Product'].isin(a)==True].index)
+      for i in elements:
+        cls.df.loc[i,'Price'] *=Shopkeeper.discount_rate
+      print('Discount added')
+    
+  @classmethod
+  def remove_discount(cls):
+    """Return price before discount."""
+    elements = list(Shopkeeper.df[Shopkeeper.df['Product'].isin(Shopkeeper.discount_items)==True].index)
+    for i in elements:
+      cls.df.loc[i,'Price'] /=Shopkeeper.discount_rate
+    Shopkeeper.discount_items=[]
+    print('Discount removed')
+
+      
+  @classmethod
+  def shopkeeper_mode(cls):
+    """Shopkeeper commands manual."""
+    print('You are in Shopkeeper mode. Please use commands below:\nadd_item: add new items specified in file into the stock;\nremove_item: remowe items from stock;\nadd_discount: define % discount;\nremove_discount: return price before discount;\nview_items: print all actual items in the stock.\nmodify_items: change item name, price and quantity\n')
+    shop_func={'add_item':Shopkeeper.add_item, 'remove_item':Shopkeeper.remove_item, 'view_items': Shopkeeper.view_items, 'modify_items': Shopkeeper.modify_items,'add_discount':Shopkeeper.add_discount,'remove_discount':Shopkeeper.remove_discount}
+    z=True
+    while z!='quit':
+      z=input('Type command ').strip().lower()
+      if z=='quit':
+        print('Exit from Shopkeeper mode')
+        break
+      else:
+        try: 
+          shop_func.get(z)()
+        except:
+          print('Please follow the instructions.')
+      print('\n')
+
+class User(Item_handling):
+  """
+   Parent class: Item_handling.
+
+   Operations which user can perform with items 
+   accessible in User mode.
+
+   Attributes
+    ----------
+    basket : pandas.core.frame.DataFrame
+    data structure of items with contains columns: Product, Quantity, Price
+    
+   Methods
+    -------
+    user_mode
+    User commands manual.
+
+    search
+    Searching the item in the stock and adding to the basket.
+
+    view_basket
+    Show user basket. 
+
+    remove_basket
+    Remove items from basket.
+
+    buy_items
+    Create Invoice with bought items and calculate total price.
+
+  """
+  basket= pd.DataFrame(columns=['Product', 'Price','Quantity'])
+
+  @classmethod
+  def user_mode(cls):
+    """User commands manual."""
+    print('You are in User mode. Please use commands below:\nview_items: list of all available items;\nsearch: search for product and add into basket\nview_basket: display items added into basket\nbuy_items: download price into separate file\nremove_basket: empty basket')
+    user_func={'view_items':Item_handling.view_items,'search':User.search,'view_basket':User.view_basket,'buy_items':User.buy_items,'remove_basket':User.remove_basket}
+    y=True
+    while y!='quit':
+      y=input('Type command ').strip().lower()
+      if y=='quit':
+        print('Exit from User mode')
+        break
+      else:
+        try: 
+          user_func.get(y)()
+        except:
+          print('Please follow the instructions.')
+      print('\n')
+    if os.path.exists("invoice.txt"):
+      os.remove("invoice.txt")
+      User.basket= pd.DataFrame(columns=['Product', 'Price','Quantity'])
+    else:
+      Item_handling.df=pd.concat([Item_handling.df,User.basket]).groupby(['Product','Price'], as_index=False)['Quantity'].sum()
+      User.basket= pd.DataFrame(columns=['Product', 'Price','Quantity'])
+
+  @classmethod
+  def search(cls):
+    """Searching the item in the stock and adding to the basket. """
+    request=True
+    while request!='quit':
+      request=input('Please type item are you looking for. Type quit for exit ').strip().lower()
+      result=Shopkeeper.df[Shopkeeper.df['Product'].str.contains(request, case=False)==True]
+      if request=='quit':
+        print('Exit from search')
+      elif result.empty:
+        print('No items found.\n')
+      else:
+        print(result)
+        answer=input('\nDo you want to add items into basket?Y\\N ').strip().lower()
+        if answer=='y':
+          ind=int(input('Plese select item index '))
+          item_to_basket=result.loc[[ind]]
+          avail_qty=result.loc[ind,'Quantity']
+          qty_to_basket=int(input('Please type quantity '))
+          if qty_to_basket>avail_qty:
+            print('\nThe required quantity is not available ')
+          else:
+            item_to_basket['Quantity']=qty_to_basket
+            User.basket=pd.concat([User.basket,item_to_basket]).groupby(['Product','Price'], as_index=False)['Quantity'].sum()
+            item_to_basket['Quantity']*=-1
+            print('\nItem added to basket')
+            #print(User.basket)
+            Item_handling.df=pd.concat([Item_handling.df,item_to_basket]).groupby(['Product','Price'], as_index=False)['Quantity'].sum()
+            #print(Item_handling.df)
+        else:
+          continue
+
+  @classmethod
+  def view_basket(cls):
+    """Show user basket. """
+    if User.basket.empty:
+      print('Your basket is empty.')
+    else:
+      print(User.basket)
+  
+  @classmethod
+  def remove_basket(cls):
+    """Remove items from basket."""
+    if User.basket.empty:
+      print('Your basket is empty.')
+    else:
+      Item_handling.df=pd.concat([Item_handling.df,User.basket]).groupby(['Product','Price'], as_index=False)['Quantity'].sum()
+      User.basket= pd.DataFrame(columns=['Product', 'Price','Quantity'])
+      print('Items has benn removed from basket.')
+
+  @classmethod
+  def buy_items(cls):
+    """Create Invoice with bought items and calculate total price."""
+    if User.basket.empty:
+      print('Your basket is empty.')
+    else:
+      invoice=User.basket
+      invoice['Amount']=invoice['Quantity']*invoice['Price']
+      invoice.loc["Total", "Amount"] = invoice.Amount.sum()
+      with open('invoice.txt', 'w') as outputfile:
+        outputfile.write(tabulate(invoice, headers = 'keys', tablefmt = 'psql'))
+      User.basket= pd.DataFrame(columns=['Product', 'Price','Quantity'])
+    
+    
+
+
+print('Welcome to RetailStore application!\nPlease select mode: shopkeeper, user or quit to exit program\n')
+d={'shopkeeper':Shopkeeper.shopkeeper_mode,'user':User.user_mode}
+x=True
+while x!='quit':
+  x=input('Type mode ').strip().lower()
+  if x=='quit':
+      print('Program completed')
+      break
+  else:
+      try: 
+        d.get(x)()
+      except:
+        print('Please follow the instructions.')
+  print('\n')
+
